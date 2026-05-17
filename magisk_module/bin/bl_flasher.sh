@@ -1,5 +1,4 @@
 #!/system/bin/sh
-# 系统更新后 保留bl版本
 if [ -z "$MODDIR" ]; then
   MODDIR=$(CDPATH= cd -- "$(dirname "$0")/.." 2>/dev/null && pwd)
 fi
@@ -8,16 +7,14 @@ if [ -z "$MODDIR" ]; then
   exit 1
 fi
 
-# ======================== 自动读取安装时选择的语言 ========================
 LANG="zh"
-if command -v ksud >/dev/null 2>&1; then
-  USER_LANG=$(ksud module config get user_lang 2>/dev/null | tr -d '[:space:]')
+if [ -f "$MODDIR/lang.txt" ]; then
+  USER_LANG=$(cat "$MODDIR/lang.txt" | tr -d '[:space:]')
   if [ "$USER_LANG" = "en" ]; then
     LANG="en"
   fi
 fi
 
-# ======================== 多语言文本 ========================
 if [ "$LANG" = "zh" ]; then
   TEXT_IDLE="等待操作"
   TEXT_NO_SLOT="无法识别当前槽位"
@@ -86,7 +83,6 @@ else
   TEXT_LOG_CLEARED="Log cleared"
 fi
 
-# ======================== 固定配置 ========================
 RUNTIME_DIR="$MODDIR/tmp"
 BY_NAME_DIR="/dev/block/by-name"
 IMAGE_NAMES="abl"
@@ -152,9 +148,6 @@ current_pid() {
   return 1
 }
 
-# extractfv and patch_abl from abl_dest
-# 0 success, 1 failed 2 new ABL version with GBL vulnerability detected, skipping BL flash to preserve BL version
-# $1: abl partition path, $2: install_superfastboot (optional, "with-superfastboot" to enable), $3: debug_mode (optional, "debug" to skip flash)
 patch_efisp() {
   install_superfastboot="${2:-no-superfastboot}"
   debug_mode="${3:-no-debug}"
@@ -162,7 +155,6 @@ patch_efisp() {
   rm "$RUNTIME_DIR/patch.log" 2>/dev/null || true
   rm "$RUNTIME_DIR/LinuxLoader.efi" 2>/dev/null || true
   $MODDIR/bin/extractfv -o "$RUNTIME_DIR" -v "$1" >> "$LOG_FILE" 2>&1
-  #patch abl
   $MODDIR/bin/patch_abl "$RUNTIME_DIR/LinuxLoader.efi" "$RUNTIME_DIR/patched.efi" >> "$RUNTIME_DIR/patch.log" 2>&1
   cat "$RUNTIME_DIR/patch.log" >> "$LOG_FILE"
   if [ ! -f "$RUNTIME_DIR/patched.efi" ]; then
@@ -170,20 +162,17 @@ patch_efisp() {
     return 1
   fi
 
-  # If superfastboot is enabled, inject loader.elf
   if [ "$install_superfastboot" = "with-superfastboot" ]; then
     write_log "$TEXT_INJECT_SFB"
     if [ ! -f "$MODDIR/loader.elf" ]; then
       write_log "$TEXT_NO_LOADER_ELF"
       return 1
     fi
-    # Inject loader into patched.efi (outputs DLL format)
     $MODDIR/bin/elf_inject "$MODDIR/loader.elf" "$RUNTIME_DIR/patched.efi" "$RUNTIME_DIR/injected.dll" >> "$LOG_FILE" 2>&1
     if [ ! -f "$RUNTIME_DIR/injected.dll" ]; then
       write_log "$TEXT_INJECT_FAILED"
       return 1
     fi
-    # Convert DLL back to EFI
     $MODDIR/bin/GenFw -e UEFI_APPLICATION -o "$RUNTIME_DIR/patched.efi" "$RUNTIME_DIR/injected.dll" >> "$LOG_FILE" 2>&1
     if [ ! -f "$RUNTIME_DIR/patched.efi" ]; then
       write_log "$TEXT_GENFW_FAILED"
@@ -192,13 +181,11 @@ patch_efisp() {
     write_log "$TEXT_INJECT_OK"
   fi
 
-  # Skip flash in debug mode
   if [ "$debug_mode" = "debug" ]; then
     write_log "$TEXT_DEBUG_MODE: $TEXT_DEBUG_DONE $RUNTIME_DIR/patched.efi"
     return 0
   fi
 
-  #flash
   if ! blockdev --setrw "/dev/block/by-name/efisp" >> "$LOG_FILE" 2>&1; then
     write_log "$TEXT_EFISP_SET_RW_FAILED"
     return 1
@@ -209,7 +196,6 @@ patch_efisp() {
   fi
   sync
   write_log "$TEXT_EFISP_FLASH_OK"
-  #检查patch log 是否包含 "Warning: Failed to patch ABL GBL\n" 如果没有则新的ABL版本存在GBL漏洞，返回伪失败，绕过后续BL flash
   if ! grep -q "Warning: Failed to patch ABL GBL" "$RUNTIME_DIR/patch.log"; then
     write_log "$TEXT_GBL_VULN"
     return 2
@@ -217,8 +203,6 @@ patch_efisp() {
   return 0
 }
 
-# detect ABL GBL vulnerability without flashing efisp
-# 0 vulnerable (should skip BL flash), 1 detect failed, 2 not vulnerable
 detect_gbl_vulnerability() {
   rm "$RUNTIME_DIR/patched.efi" 2>/dev/null || true
   rm "$RUNTIME_DIR/patch.log" 2>/dev/null || true
@@ -257,7 +241,6 @@ print_status() {
     fi
   fi
 
-
   _state=''; [ -f "$STATE_FILE" ] && read -r _state < "$STATE_FILE"
   _msg=''; [ -f "$MESSAGE_FILE" ] && read -r _msg < "$MESSAGE_FILE"
   _upd=''; [ -f "$UPDATED_FILE" ] && read -r _upd < "$UPDATED_FILE"
@@ -277,7 +260,6 @@ run_flash() {
   update_efisp="${1:-skip-efisp}"
   install_superfastboot="no-superfastboot"
   debug_mode="no-debug"
-  # Parse mode
   case "$update_efisp" in
     "update-efisp-with-superfastboot")
       update_efisp="update-efisp"
@@ -315,7 +297,6 @@ run_flash() {
   write_state 'running' "$TEXT_FLASHING $target_slot"
   write_log "Current slot: $current_slot  Target slot: $target_slot"
 
-  # Debug mode: process but don't flash
   if [ "$debug_mode" = "debug" ]; then
     write_log "$TEXT_DEBUG_MODE"
     abl_part=$(partition_path abl "$target_slot")
@@ -348,12 +329,10 @@ run_flash() {
   abl_part=$(partition_path abl "$target_slot")
 
   if [ "$update_efisp" = 'update-efisp' ] || [ "$update_efisp" = '1' ] || [ "$update_efisp" = 'true' ]; then
-    #patch abl and flash efisp first, since it's the only one that can brick the device if something goes wrong
-    #0 success, 1 failed, 2 new ABL version with GBL vulnerability detected
     patch_efisp "$abl_part" "$install_superfastboot" "$debug_mode"
     ret=$?
     case $ret in
-      0) ;; # 成功，继续
+      0) ;;
       1) efisp_failed='1'
          write_state 'running' "$TEXT_EFISP_WARN"
          write_log "$TEXT_EFISP_WARN2"
