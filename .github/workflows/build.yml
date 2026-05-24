@@ -33,20 +33,27 @@ jobs:
         make clean
         DIST_NAME=magisk_module make build_module
 
+    - name: Unpack artifacts
+      run: |
+        mkdir -p artifacts/toolkit_linux artifacts/toolkit_windows artifacts/magisk_module
+        unzip release/toolkit_linux.zip -d artifacts/toolkit_linux
+        unzip release/toolkit_windows.zip -d artifacts/toolkit_windows
+        unzip release/magisk_module.zip -d artifacts/magisk_module
+
     - name: Upload Linux Toolkit
       uses: actions/upload-artifact@v4
       with:
         name: toolkit_linux
-        path: release/toolkit_linux.zip
+        path: artifacts/toolkit_linux/dist/*
 
     - name: Upload Windows Toolkit
       uses: actions/upload-artifact@v4
       with:
         name: toolkit_windows
-        path: release/toolkit_windows.zip
+        path: artifacts/toolkit_windows/dist/*
 
     - name: Upload Magisk Module
       uses: actions/upload-artifact@v4
       with:
         name: magisk_module
-        path: release/magisk_module.zip
+        path: artifacts/magisk_module/*
