@@ -132,6 +132,7 @@ int32_t patch_adrl_unlocked_to_locked(char* buffer, int32_t size, uint64_t load_
         if (!str_at(buffer, size, off1, "locked"))   continue;
         bool match = false;
         for(int j=i+16; j<=i+40;j+=4){
+            if (j + 7 >= size) break;
             DecodedInst c0 = decode_at(buffer, j);
             DecodedInst c1 = decode_at(buffer, j + 4);
             if(c0.type == INST_ADRP && c1.type == INST_ADD_X_IMM){
