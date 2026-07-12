@@ -41,3 +41,5 @@ tools_vbmetafixer_linux:
 	cd tools/vbmetafixer && make build
 tools_vbmetafixer_windows:
 	cd tools/vbmetafixer && make build_windows
+tools_vbmetafixer_android:
+	cd tools/vbmetafixer && make build_android
