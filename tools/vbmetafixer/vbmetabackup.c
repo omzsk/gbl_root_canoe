@@ -369,11 +369,11 @@ int main(int argc, char **argv) {
 
     static const char *roots[] = {
         "vbmeta",
-/** /
         "vbmeta_system",
-        "boot", "dtbo", "init_boot", "pvmfw",
-        "qtvm-dtbo", "recovery", "vendor_boot",
-        /**/
+        "recovery",
+        "vendor_boot",
+        "boot",
+        "init_boot",
         NULL
     };
 
